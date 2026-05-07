@@ -27,6 +27,12 @@ def get_session():
     return Session()
 
 
+@app.route('/')
+def index():
+    """Serve the main HTML page."""
+    return app.send_static_file('index.html')
+
+
 @app.route('/api/documents', methods=['POST'])
 def create_document():
     """Insert a new documentation record."""
