@@ -1,23 +1,29 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session, send_from_directory
 from server import (
     create_documentation_table,
     insert_documentation_record,
     search_documentation_records,
     Documentation,
+    User,
     SectorEnum,
-    SQLAlchemyError
+    SQLAlchemyError,
+    register_user,
+    authenticate_user
 )
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 import os
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder='static', static_url_path='/static')
 
 # Configuration
 DB_HOST = os.getenv('DB_HOST', 'localhost')
 DB_USER = os.getenv('DB_USER', 'root')
 DB_PASSWORD = os.getenv('DB_PASSWORD', 'AldebaraN7#')
 DB_NAME = os.getenv('DB_NAME', 'docs_db')
+
+# Set secret key for session management
+app.secret_key = os.getenv('SECRET_KEY', 'your-secret-key-change-in-production')
 
 
 def get_session():
@@ -30,13 +36,121 @@ def get_session():
 @app.route('/')
 def index():
     """Serve the main HTML page."""
-    return app.send_static_file('index.html')
+    return send_from_directory('static', 'index.html')
+
+
+@app.route('/api/register', methods=['POST'])
+def register():
+    """Register a new user."""
+    try:
+        data = request.get_json()
+        
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({'error': 'Missing required fields: username, password'}), 400
+        
+        username = data.get('username').strip()
+        password = data.get('password')
+        
+        if not username or not password:
+            return jsonify({'error': 'Username and password cannot be empty'}), 400
+        
+        if len(password) < 4:
+            return jsonify({'error': 'Password must be at least 4 characters long'}), 400
+        
+        user = register_user(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            username=username,
+            user_password=password
+        )
+        
+        return jsonify({
+            'success': True,
+            'message': 'User registered successfully',
+            'user': user
+        }), 201
+    
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Login a user."""
+    try:
+        data = request.get_json()
+        
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({'error': 'Missing required fields: username, password'}), 400
+        
+        username = data.get('username').strip()
+        password = data.get('password')
+        
+        user = authenticate_user(
+            host=DB_HOST,
+            user=DB_USER,
+            password=DB_PASSWORD,
+            database=DB_NAME,
+            username=username,
+            user_password=password
+        )
+        
+        # Store user in session
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        
+        return jsonify({
+            'success': True,
+            'message': 'Login successful',
+            'user': user
+        }), 200
+    
+    except RuntimeError as e:
+        return jsonify({'error': str(e)}), 401
+    except Exception as e:
+        return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
+
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    """Logout the current user."""
+    session.clear()
+    return jsonify({
+        'success': True,
+        'message': 'Logged out successfully'
+    }), 200
+
+
+@app.route('/api/current-user', methods=['GET'])
+def get_current_user():
+    """Get current logged-in user."""
+    if 'username' in session:
+        return jsonify({
+            'success': True,
+            'user': {
+                'id': session.get('user_id'),
+                'username': session.get('username')
+            }
+        }), 200
+    else:
+        return jsonify({
+            'success': False,
+            'message': 'Not logged in'
+        }), 401
 
 
 @app.route('/api/documents', methods=['POST'])
 def create_document():
     """Insert a new documentation record."""
     try:
+        # Check if user is logged in
+        if 'username' not in session:
+            return jsonify({'error': 'User not logged in'}), 401
+        
         data = request.get_json()
         
         # Validate required fields
@@ -46,7 +160,7 @@ def create_document():
         title = data.get('title')
         content = data.get('content')
         sector = data.get('sector')
-        author = data.get('author')
+        author = session.get('username')  # Use logged-in user as author
         
         # Insert the record
         doc_id = insert_documentation_record(

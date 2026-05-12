@@ -1,6 +1,112 @@
 $(document).ready(function() {
-    // Load all documents on page load
-    loadDocuments();
+    // Check if user is logged in on page load
+    checkUserStatus();
+
+    // ==================== Authentication Event Handlers ====================
+    
+    $('#login-form').submit(function(e) {
+        e.preventDefault();
+        const username = $('#login-username').val().trim();
+        const password = $('#login-password').val();
+        
+        if (!username || !password) {
+            showAlert('Please fill in all fields', 'error');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/login',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                username: username,
+                password: password
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Login successful!', 'success');
+                    $('#login-form')[0].reset();
+                    showApp();
+                } else {
+                    showAlert('Login failed: ' + response.error, 'error');
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.error || 'Unknown error';
+                showAlert('Login failed: ' + error, 'error');
+            }
+        });
+    });
+
+    $('#register-form').submit(function(e) {
+        e.preventDefault();
+        const username = $('#register-username').val().trim();
+        const password = $('#register-password').val();
+        const passwordConfirm = $('#register-password-confirm').val();
+        
+        if (!username || !password || !passwordConfirm) {
+            showAlert('Please fill in all fields', 'error');
+            return;
+        }
+        
+        if (password !== passwordConfirm) {
+            showAlert('Passwords do not match', 'error');
+            return;
+        }
+        
+        $.ajax({
+            url: '/api/register',
+            method: 'POST',
+            contentType: 'application/json',
+            data: JSON.stringify({
+                username: username,
+                password: password
+            }),
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Registration successful! Please login.', 'success');
+                    $('#register-form')[0].reset();
+                    toggleAuthForms();
+                } else {
+                    showAlert('Registration failed: ' + response.error, 'error');
+                }
+            },
+            error: function(xhr) {
+                const error = xhr.responseJSON?.error || 'Unknown error';
+                showAlert('Registration failed: ' + error, 'error');
+            }
+        });
+    });
+
+    $('#show-register-link').click(function(e) {
+        e.preventDefault();
+        toggleAuthForms();
+    });
+
+    $('#show-login-link').click(function(e) {
+        e.preventDefault();
+        toggleAuthForms();
+    });
+
+    $('#logout-btn').click(function() {
+        $.ajax({
+            url: '/api/logout',
+            method: 'POST',
+            success: function(response) {
+                if (response.success) {
+                    showAlert('Logged out successfully', 'success');
+                    showAuth();
+                } else {
+                    showAlert('Logout failed: ' + response.error, 'error');
+                }
+            },
+            error: function(xhr) {
+                showAlert('Logout error: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+            }
+        });
+    });
+
+    // ==================== Document Management Event Handlers ====================
 
     // Search functionality
     $('#search-btn').click(function() {
@@ -48,6 +154,52 @@ $(document).ready(function() {
         }
     });
 
+    // ==================== Authentication Helper Functions ====================
+
+    function checkUserStatus() {
+        $.ajax({
+            url: '/api/current-user',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    showApp();
+                } else {
+                    showAuth();
+                }
+            },
+            error: function() {
+                showAuth();
+            }
+        });
+    }
+
+    function showAuth() {
+        $('#auth-section').show();
+        $('#app-section').hide();
+    }
+
+    function showApp() {
+        $.ajax({
+            url: '/api/current-user',
+            method: 'GET',
+            success: function(response) {
+                if (response.success) {
+                    $('#current-username').text('Welcome, ' + response.user.username);
+                    $('#auth-section').hide();
+                    $('#app-section').show();
+                    loadDocuments();
+                }
+            }
+        });
+    }
+
+    function toggleAuthForms() {
+        $('#login-form-div').toggle();
+        $('#register-form-div').toggle();
+    }
+
+    // ==================== Document Management Functions ====================
+
     function loadDocuments() {
         $.ajax({
             url: '/api/documents',
@@ -87,9 +239,13 @@ $(document).ready(function() {
         const formData = {
             title: $('#title').val(),
             sector: $('#sector').val(),
-            author: $('#author').val(),
             content: $('#content').val()
         };
+
+        if (!formData.title || !formData.content) {
+            showAlert('Please fill in title and content', 'error');
+            return;
+        }
 
         $.ajax({
             url: '/api/documents',
@@ -106,7 +262,12 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                showAlert('Error adding document: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+                if (xhr.status === 401) {
+                    showAlert('You are not logged in. Please login to add documents.', 'error');
+                    showAuth();
+                } else {
+                    showAlert('Error adding document: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+                }
             }
         });
     }
@@ -121,7 +282,6 @@ $(document).ready(function() {
                     $('#edit-id').val(doc.id);
                     $('#edit-title').val(doc.title);
                     $('#edit-sector').val(doc.sector);
-                    $('#edit-author').val(doc.author);
                     $('#edit-content').val(doc.content);
                     $('#edit-modal').show();
                 } else {
@@ -139,7 +299,6 @@ $(document).ready(function() {
         const formData = {
             title: $('#edit-title').val(),
             sector: $('#edit-sector').val(),
-            author: $('#edit-author').val(),
             content: $('#edit-content').val()
         };
 
@@ -232,7 +391,11 @@ $(document).ready(function() {
         const alertClass = type === 'success' ? 'alert-success' : 'alert-error';
         const alert = $(`<div class="alert ${alertClass}">${message}</div>`);
 
-        $('.container').prepend(alert);
+        if ($('#app-section').is(':visible')) {
+            $('#app-section').prepend(alert);
+        } else {
+            $('#auth-section').prepend(alert);
+        }
 
         // Auto-hide after 5 seconds
         setTimeout(function() {

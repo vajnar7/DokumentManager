@@ -1,6 +1,7 @@
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Enum, func
 from sqlalchemy.orm import sessionmaker, declarative_base
 from sqlalchemy.exc import SQLAlchemyError
+from werkzeug.security import generate_password_hash, check_password_hash
 import enum
 
 Base = declarative_base()
@@ -9,6 +10,15 @@ class SectorEnum(enum.Enum):
     IT = 'IT'
     Kotlovnica = 'Kotlovnica'
     Elektricarji = 'Elektricarji'
+
+# Define the User model
+class User(Base):
+    __tablename__ = 'users'
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    username = Column(String(80), unique=True, nullable=False)
+    password = Column(String(255), nullable=False)
+    created_at = Column(DateTime, default=func.now(), nullable=False)
 
 # Define the Documentation model
 class Documentation(Base):
@@ -72,6 +82,52 @@ def search_documentation_records(host, user, password, database, search_string, 
         ]
     except SQLAlchemyError as e:
         raise RuntimeError(f"Error searching records: {e}") from e
+    finally:
+        session.close()
+
+
+def register_user(host, user, password, database, username, user_password):
+    """Register a new user."""
+    engine = create_engine(f'mysql+mysqlconnector://{user}:{password}@{host}/{database}')
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        # Check if user already exists
+        existing_user = session.query(User).filter(User.username == username).first()
+        if existing_user:
+            raise RuntimeError(f"User '{username}' already exists")
+        
+        # Hash the password
+        hashed_password = generate_password_hash(user_password)
+        
+        # Create new user
+        new_user = User(username=username, password=hashed_password)
+        session.add(new_user)
+        session.commit()
+        return {'id': new_user.id, 'username': new_user.username}
+    except SQLAlchemyError as e:
+        session.rollback()
+        raise RuntimeError(f"Error registering user: {e}") from e
+    finally:
+        session.close()
+
+
+def authenticate_user(host, user, password, database, username, user_password):
+    """Authenticate a user and return user data if successful."""
+    engine = create_engine(f'mysql+mysqlconnector://{user}:{password}@{host}/{database}')
+    Session = sessionmaker(bind=engine)
+    session = Session()
+    try:
+        db_user = session.query(User).filter(User.username == username).first()
+        if not db_user:
+            raise RuntimeError(f"User '{username}' not found")
+        
+        if not check_password_hash(db_user.password, user_password):
+            raise RuntimeError("Invalid password")
+        
+        return {'id': db_user.id, 'username': db_user.username}
+    except SQLAlchemyError as e:
+        raise RuntimeError(f"Error authenticating user: {e}") from e
     finally:
         session.close()
 
