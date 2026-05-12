@@ -317,7 +317,15 @@ $(document).ready(function() {
                 }
             },
             error: function(xhr) {
-                showAlert('Error updating document: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+                if (xhr.status === 403) {
+                    showAlert('You can only edit documents you created', 'error');
+                } else if (xhr.status === 401) {
+                    showAlert('You are not logged in', 'error');
+                    showAuth();
+                } else {
+                    showAlert('Error updating document: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+                }
+                loadDocuments();
             }
         });
     }
@@ -336,7 +344,15 @@ $(document).ready(function() {
                     }
                 },
                 error: function(xhr) {
-                    showAlert('Error deleting document: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+                    if (xhr.status === 403) {
+                        showAlert('You can only delete documents you created', 'error');
+                    } else if (xhr.status === 401) {
+                        showAlert('You are not logged in', 'error');
+                        showAuth();
+                    } else {
+                        showAlert('Error deleting document: ' + xhr.responseJSON?.error || 'Unknown error', 'error');
+                    }
+                    loadDocuments();
                 }
             });
         }
@@ -351,14 +367,25 @@ $(document).ready(function() {
             return;
         }
 
+        // Get current username
+        const currentUsername = $('#current-username').text().replace('Welcome, ', '');
+
         documents.forEach(function(doc) {
+            // Check if current user is the author
+            const isAuthor = doc.author === currentUsername;
+            
+            // Only show buttons if user is the author
+            const buttonsHtml = isAuthor ? `
+                <button class="edit-btn" data-id="${doc.id}">Edit</button>
+                <button class="delete-btn" data-id="${doc.id}">Delete</button>
+            ` : '<span class="not-author">Not your document</span>';
+            
             const docElement = $(`
                 <div class="document-item">
                     <div class="document-header">
                         <h3 class="document-title">${escapeHtml(doc.title)}</h3>
                         <div class="document-actions">
-                            <button class="edit-btn" data-id="${doc.id}">Edit</button>
-                            <button class="delete-btn" data-id="${doc.id}">Delete</button>
+                            ${buttonsHtml}
                         </div>
                     </div>
                     <div class="document-meta">
@@ -371,14 +398,16 @@ $(document).ready(function() {
                 </div>
             `);
 
-            // Attach event handlers
-            docElement.find('.edit-btn').click(function() {
-                editDocument($(this).data('id'));
-            });
+            // Attach event handlers only if user is author
+            if (isAuthor) {
+                docElement.find('.edit-btn').click(function() {
+                    editDocument($(this).data('id'));
+                });
 
-            docElement.find('.delete-btn').click(function() {
-                deleteDocument($(this).data('id'));
-            });
+                docElement.find('.delete-btn').click(function() {
+                    deleteDocument($(this).data('id'));
+                });
+            }
 
             container.append(docElement);
         });

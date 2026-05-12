@@ -15,10 +15,11 @@ The application now includes user authentication and document authorship trackin
 - No need to manually enter the author name
 - Author field is removed from the UI form
 
-### 3. Session Management
-- User sessions are maintained across browser sessions
-- Users can log out to clear their session
-- Session data is stored server-side
+### 3. Document Authorization
+- Only the document author (the user who created it) can edit or delete their documents
+- Other users can view documents but cannot modify them
+- Attempting to edit/delete someone else's document returns a 403 Forbidden error
+- The UI only shows edit/delete buttons for documents you created
 
 ## Installation Steps
 
@@ -65,15 +66,17 @@ The application will start on `http://localhost:5000`
 ### Managing Documents
 1. Once logged in, you can:
    - Add new documents (author is auto-filled with your username)
-   - Edit documents
-   - Delete documents
-   - Search documents
+   - Edit your own documents
+   - Delete your own documents
+   - Search documents (view all documents)
 
 2. All documents show:
    - Title
    - Sector (IT, Kotlovnica, Elektricarji)
    - Author (logged-in user who created it)
    - Creation and update timestamps
+   - Edit and Delete buttons (only visible if you are the author)
+   - "Not your document" indicator (if you are not the author)
 
 ### Logout
 Click the "Logout" button in the top-right corner to log out and return to the login page.
@@ -90,8 +93,8 @@ Click the "Logout" button in the top-right corner to log out and return to the l
 - `GET /api/documents` - List all documents
 - `POST /api/documents` - Create new document (requires login)
 - `GET /api/documents/<id>` - Get specific document
-- `PUT /api/documents/<id>` - Update document
-- `DELETE /api/documents/<id>` - Delete document
+- `PUT /api/documents/<id>` - Update document (requires login, author only)
+- `DELETE /api/documents/<id>` - Delete document (requires login, author only)
 - `GET /api/documents/search?q=query` - Search documents
 
 ## Security Considerations
@@ -123,6 +126,14 @@ Click the "Logout" button in the top-right corner to log out and return to the l
 
 ## Troubleshooting
 
+### "You can only edit documents you created"
+- You attempted to edit a document that you did not create
+- Only the author of a document can edit it
+
+### "You can only delete documents you created"
+- You attempted to delete a document that you did not create
+- Only the author of a document can delete it
+
 ### "User 'username' already exists"
 - The username is taken. Try a different username.
 
@@ -144,8 +155,8 @@ Click the "Logout" button in the top-right corner to log out and return to the l
 ## Files Modified
 
 - `server.py` - Added User model and authentication functions
-- `app.py` - Added authentication endpoints and session management
+- `app.py` - Added authentication endpoints and session management; updated PUT and DELETE endpoints to require user to be logged in and be the document author
 - `static/index.html` - Added login/register UI
-- `static/js/app.js` - Added authentication JavaScript logic
-- `static/css/style.css` - Added login page styling
+- `static/js/app.js` - Added authentication JavaScript logic; updated document display to conditionally show edit/delete buttons based on document authorship
+- `static/css/style.css` - Added login page styling and "not author" indicator styling
 - `requirements.txt` - Added Werkzeug dependency

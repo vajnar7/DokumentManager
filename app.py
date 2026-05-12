@@ -192,19 +192,27 @@ def create_document():
 def update_document(doc_id):
     """Update an existing documentation record."""
     try:
+        # Check if user is logged in
+        if 'username' not in session:
+            return jsonify({'error': 'User not logged in'}), 401
+        
         data = request.get_json()
         
         if not data:
             return jsonify({'error': 'No data provided'}), 400
         
-        session = get_session()
+        db_session = get_session()
         
         try:
             # Find the document
-            document = session.query(Documentation).filter(Documentation.id == doc_id).first()
+            document = db_session.query(Documentation).filter(Documentation.id == doc_id).first()
             
             if not document:
                 return jsonify({'error': f'Document with id {doc_id} not found'}), 404
+            
+            # Check if current user is the author
+            if document.author != session.get('username'):
+                return jsonify({'error': 'You can only edit documents you created'}), 403
             
             # Update fields if provided
             if 'title' in data:
@@ -213,10 +221,8 @@ def update_document(doc_id):
                 document.content = data['content']
             if 'sector' in data and data['sector']:
                 document.sector = SectorEnum(data['sector'])
-            if 'author' in data:
-                document.author = data['author']
             
-            session.commit()
+            db_session.commit()
             
             return jsonify({
                 'success': True,
@@ -225,13 +231,13 @@ def update_document(doc_id):
             }), 200
         
         except ValueError as e:
-            session.rollback()
+            db_session.rollback()
             return jsonify({'error': f'Invalid sector value: {str(e)}'}), 400
         except SQLAlchemyError as e:
-            session.rollback()
+            db_session.rollback()
             return jsonify({'error': f'Database error: {str(e)}'}), 500
         finally:
-            session.close()
+            db_session.close()
     
     except Exception as e:
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
@@ -241,18 +247,26 @@ def update_document(doc_id):
 def delete_document(doc_id):
     """Delete a documentation record."""
     try:
-        session = get_session()
+        # Check if user is logged in
+        if 'username' not in session:
+            return jsonify({'error': 'User not logged in'}), 401
+        
+        db_session = get_session()
         
         try:
             # Find the document
-            document = session.query(Documentation).filter(Documentation.id == doc_id).first()
+            document = db_session.query(Documentation).filter(Documentation.id == doc_id).first()
             
             if not document:
                 return jsonify({'error': f'Document with id {doc_id} not found'}), 404
             
+            # Check if current user is the author
+            if document.author != session.get('username'):
+                return jsonify({'error': 'You can only delete documents you created'}), 403
+            
             # Delete the document
-            session.delete(document)
-            session.commit()
+            db_session.delete(document)
+            db_session.commit()
             
             return jsonify({
                 'success': True,
@@ -261,10 +275,10 @@ def delete_document(doc_id):
             }), 200
         
         except SQLAlchemyError as e:
-            session.rollback()
+            db_session.rollback()
             return jsonify({'error': f'Database error: {str(e)}'}), 500
         finally:
-            session.close()
+            db_session.close()
     
     except Exception as e:
         return jsonify({'error': f'Unexpected error: {str(e)}'}), 500
